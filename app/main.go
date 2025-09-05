@@ -269,6 +269,95 @@ func handleConnection(conn net.Conn) {
 			} else {
 				conn.Write([]byte("-ERR wrong number of arguments for 'LRANGE'\r\n"))
 			}
+		case "LLEN":
+			if len(parts)>=2{
+				name:=parts[1]
+				mu.RLock()
+				length:=len(lists[name])
+				mu.RUnlock()
+				conn.Write([]byte(fmt.Sprintf(":%d\r\n",length)))
+			}
+		case "LPOP":
+			if len(parts) >= 2 {
+				name := parts[1]
+				count := 1
+				if len(parts) >= 3 {
+					c, err := strconv.Atoi(parts[2])
+					if err == nil && c > 0 {
+						count = c
+					} else {
+						conn.Write([]byte("*0\r\n")) 
+						break
+					}
+				}
+		
+				mu.Lock()
+				list, exists := lists[name]
+				if !exists || len(list) == 0 {
+					mu.Unlock()
+					conn.Write([]byte("$-1\r\n"))
+					break
+				}
+		
+				if count > len(list) {
+					count = len(list)
+				}
+		
+				values := list[:count]
+				lists[name] = list[count:]
+				mu.Unlock()
+		
+				if count == 1 {
+					val := values[0]
+					conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
+				} else {
+					conn.Write([]byte(fmt.Sprintf("*%d\r\n", len(values))))
+					for _, v := range values {
+						conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(v), v)))
+					}
+				}
+			}
+		
+		case "RPOP":
+			if len(parts) >= 2 {
+				name := parts[1]
+				count := 1
+				if len(parts) >= 3 {
+					c, err := strconv.Atoi(parts[2])
+					if err == nil && c > 0 {
+						count = c
+					} else {
+						conn.Write([]byte("*0\r\n")) 
+						break
+					}
+				}
+		
+				mu.Lock()
+				list, exists := lists[name]
+				if !exists || len(list) == 0 {
+					mu.Unlock()
+					conn.Write([]byte("$-1\r\n"))
+					break
+				}
+		
+				if count > len(list) {
+					count = len(list)
+				}
+		
+				values := list[len(list)-count:]
+				lists[name] = list[:len(list)-count]
+				mu.Unlock()
+		
+				if count == 1 {
+					val := values[0]
+					conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
+				} else {
+					conn.Write([]byte(fmt.Sprintf("*%d\r\n", len(values))))
+					for _, v := range values {
+						conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(v), v)))
+					}
+				}
+			}
 		
 		default:
 			conn.Write([]byte("-ERR unknown command\r\n"))
